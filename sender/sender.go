@@ -1,6 +1,7 @@
 package sender
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -42,8 +43,16 @@ func sendFile(con net.Conn) {
 	}
 	defer file.Close()
 
-	// sending file name first
-	log.Println("the filename to be sent")
+	// SEND FILE NAME SIZE
+	fileName := file.Name()
+	log.Println("file name", fileName)
+	fileNameLen := uint32(len(fileName))
+	log.Println("file name len: ", fileNameLen)
+	if err = binary.Write(con, binary.LittleEndian, fileNameLen); err != nil {
+		log.Fatalf("err sending file name size: %s", err)
+	}
+
+	// sending file name
 	_, err = con.Write([]byte(filepath))
 	if err != nil {
 		log.Fatalf("err sending filename: %s", err)
