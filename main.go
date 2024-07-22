@@ -18,10 +18,14 @@ func main() {
 	var purpose string
 	fmt.Scanln(&purpose)
 
-	receiver := receiver.NewReceiver(1024)
+	chunkSize := uint(1024)
+	receiver := receiver.NewReceiver(chunkSize)
+	sender := sender.NewSender(chunkSize)
 
 	if purpose == "s" {
-		sender.Handle(port)
+		if err := sender.Handle(port); err != nil {
+			log.Fatalf("err starting sender: %s", err)
+		}
 
 	} else if purpose == "r" {
 		if err := receiver.Handle(); err != nil {

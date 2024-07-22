@@ -96,6 +96,8 @@ func (r *Receiver) receiveAndSaveFileContent(con net.Conn, file *os.File) error 
 		}
 	}
 
+	log.Printf("received %d bytes from the sender", totalBytesReceived)
+
 	return nil
 }
 

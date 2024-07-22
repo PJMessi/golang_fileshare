@@ -9,34 +9,44 @@ import (
 	"os"
 )
 
-func Handle(port string) {
-	// listen for clients
+type Sender struct {
+	chunkSize uint
+}
+
+func NewSender(chunkSize uint) *Sender {
+	return &Sender{
+		chunkSize: chunkSize,
+	}
+}
+
+func (s *Sender) Handle(port string) error {
+	// CREATE A LISTENER
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		log.Fatalf("err starting listener: %s", err)
+		return fmt.Errorf("err starting listener: %s", err)
 	}
 	defer listener.Close()
 	log.Printf("listening on port: %s", port)
 
-	// keep listening for clients
+	// LISTEN FOR CLIENTS IN A LOOP
 	for {
 		con, err := listener.Accept()
 		if err != nil {
-			log.Fatalf("err accepting connection: %s", err)
+			return fmt.Errorf("err accepting connection: %s", err)
 		}
 		log.Printf("connected to receiver: %s", con.RemoteAddr())
 
-		go sendFile(con)
+		go s.sendFile(con)
 	}
 }
 
-func sendFile(con net.Conn) {
+func (s *Sender) sendFile(con net.Conn) error {
 	defer con.Close()
 
-	filepath := requestFilePath()
-	log.Println("filepath: ", filepath)
+	// REQUEST FILE PATH
+	filepath := s.requestFilePath()
 
-	// load file
+	// LOAD THE FILE
 	file, err := os.Open(filepath)
 	if err != nil {
 		log.Fatalf("err opening file: %s", err)
@@ -44,35 +54,52 @@ func sendFile(con net.Conn) {
 	defer file.Close()
 
 	// SEND FILE NAME SIZE
-	fileName := file.Name()
-	log.Println("file name", fileName)
-	fileNameLen := uint32(len(fileName))
-	log.Println("file name len: ", fileNameLen)
-	if err = binary.Write(con, binary.LittleEndian, fileNameLen); err != nil {
-		log.Fatalf("err sending file name size: %s", err)
+	if err := s.sendFileNameSize(con, file); err != nil {
+		return fmt.Errorf("err sending file name size: %s", err)
 	}
 
-	// sending file name
+	// SEND FILE NAME
 	_, err = con.Write([]byte(filepath))
 	if err != nil {
 		log.Fatalf("err sending filename: %s", err)
 	}
 
-	// creating buffer to hold 1024 bytes (1 kb)
-	chunk := make([]byte, 1024)
+	// SEND FILE CONTENT
+	if err := s.sendFileContent(con, file); err != nil {
+		return fmt.Errorf("err sending file content: %s", err)
+	}
+
+	return nil
+}
+
+func (s *Sender) sendFileNameSize(con net.Conn, file *os.File) error {
+	fileName := file.Name()
+
+	fileNameLen := uint32(len(fileName))
+
+	if err := binary.Write(con, binary.LittleEndian, fileNameLen); err != nil {
+		return fmt.Errorf("err sending file name size: %s", err)
+	}
+
+	return nil
+}
+
+func (s *Sender) sendFileContent(con net.Conn, file *os.File) error {
+	chunk := make([]byte, s.chunkSize)
 
 	totalBytesSent := 0
 	for {
-		// read a chunk
-		n, err := file.Read(chunk)
+		// READ A CHUNK
+		bytesRead, err := file.Read(chunk)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			log.Fatalf("err reading a chunk: %s", err)
+
+			return fmt.Errorf("err reading file chunk: %s", err)
 		}
 
-		// send the chunk
+		// SEND THE CHUNK
 		// Using con.Write(chunk[:n]) instead of con.Write(chunk) is important
 		// because the file.Read(chunk) function doesn’t always fill the buffer
 		// completely. It returns the actual number of bytes read, which can be
@@ -80,20 +107,24 @@ func sendFile(con net.Conn) {
 		// file is smaller than the buffer size. con.Write(chunk) would send the
 		// entire buffer, including any uninitialized or old data, leading to
 		// incorrect data transmission.
-		_, err = con.Write(chunk[:n])
+		_, err = con.Write(chunk[:bytesRead])
 		if err != nil {
-			log.Printf("err sending chunk: %s", err)
+			return fmt.Errorf("err sending file chunk: %s", err)
 		}
 
-		totalBytesSent += n
+		totalBytesSent += bytesRead
 	}
 
-	log.Printf("sent %d bytes", totalBytesSent)
+	log.Printf("sent %d bytes to receiver", totalBytesSent)
+
+	return nil
 }
 
-func requestFilePath() string {
+func (s *Sender) requestFilePath() string {
 	fmt.Println("enter the filepath: ")
 	var filepath string
+
 	fmt.Scanln(&filepath)
+
 	return filepath
 }
