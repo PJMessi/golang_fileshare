@@ -18,9 +18,10 @@ func main() {
 	var purpose string
 	fmt.Scanln(&purpose)
 
+	udpDiscoveryPort := uint(9999)
 	chunkSize := uint(1024)
-	receiver := receiver.NewReceiver(chunkSize)
-	sender := sender.NewSender(chunkSize)
+	receiver := receiver.NewReceiver(chunkSize, udpDiscoveryPort)
+	sender := sender.NewSender(chunkSize, udpDiscoveryPort)
 
 	if purpose == "s" {
 		if err := sender.Handle(port); err != nil {

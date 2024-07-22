@@ -7,19 +7,29 @@ import (
 	"log"
 	"net"
 	"os"
+	"time"
 )
 
 type Sender struct {
-	chunkSize uint
+	chunkSize        uint
+	udpDiscoveryPort uint
 }
 
-func NewSender(chunkSize uint) *Sender {
+func NewSender(chunkSize, udpDiscoveryPort uint) *Sender {
 	return &Sender{
-		chunkSize: chunkSize,
+		chunkSize:        chunkSize,
+		udpDiscoveryPort: udpDiscoveryPort,
 	}
 }
 
 func (s *Sender) Handle(port string) error {
+	// BROADCAST DISCOVERY MSG
+	go func() {
+		if err := s.broadcastDiscoverMsg(port); err != nil {
+			log.Printf("err broadcasting discovery msg: %s", err)
+		}
+	}()
+
 	// CREATE A LISTENER
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -127,4 +137,28 @@ func (s *Sender) requestFilePath() string {
 	fmt.Scanln(&filepath)
 
 	return filepath
+}
+
+func (s *Sender) broadcastDiscoverMsg(port string) error {
+	addr, err := net.ResolveUDPAddr("udp", "255.255.255.255:9999")
+	if err != nil {
+		return fmt.Errorf("err resolving udp address: %s", err)
+	}
+
+	con, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return fmt.Errorf("err dialing udp: %s", err)
+	}
+
+	for {
+		message := fmt.Sprintf("DISCOVER_SENDER: %s", port)
+		_, err := con.Write([]byte(message))
+		if err != nil {
+			return fmt.Errorf("err sending discovery msg: %s", err)
+		}
+
+		time.Sleep(2 * time.Second)
+
+		// TODO: USE TIMEOUT CTX
+	}
 }

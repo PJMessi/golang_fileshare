@@ -8,22 +8,30 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 	"time"
 	"unsafe"
 )
 
 type Receiver struct {
-	chunkSize uint
+	chunkSize        uint
+	udpDiscoveryPort uint
 }
 
-func NewReceiver(chunkSize uint) *Receiver {
+func NewReceiver(chunkSize, udpDiscoveryPort uint) *Receiver {
 	return &Receiver{
-		chunkSize: chunkSize,
+		chunkSize:        chunkSize,
+		udpDiscoveryPort: udpDiscoveryPort,
 	}
 }
 
 func (r *Receiver) Handle() error {
-	var peers = []string{"localhost:8080"}
+	peer, err := r.discover()
+	if err != nil {
+		return fmt.Errorf("err searching for discovery msg: %s", err)
+	}
+
+	peers := []string{peer}
 
 	for _, peer := range peers {
 		// CONNECT TO SENDER
@@ -46,6 +54,48 @@ func (r *Receiver) Handle() error {
 	}
 
 	return nil
+}
+
+func (r *Receiver) discover() (string, error) {
+	/*
+		The net.UDPAddr structure requires an IP address as part of its
+		configuration to specify where the UDP listener should bind. Here’s a
+		more detailed explanation of why the IP address is needed and its
+		purpose in this context:
+
+		Purpose of the IP Address in net.UDPAddr
+		1.	Binding to a Specific Network Interface:
+		•	The IP address in net.UDPAddr allows you to bind the UDP listener
+		to a specific network interface on the machine.
+		•	For example, if a machine has multiple network interfaces
+		(e.g., Ethernet, Wi-Fi), you might want to bind to one specific interface.
+		2.	Listening on All Interfaces:
+		•	Using net.ParseIP("0.0.0.0") specifies that the listener should bind
+		to all available network interfaces.
+		•	This means the UDP listener will receive packets sent to any of
+		the machine’s IP addresses, whether they come through Ethernet, Wi-Fi,
+		or any other interface.
+	*/
+	addr := net.UDPAddr{Port: int(r.udpDiscoveryPort), IP: net.ParseIP("0.0.0.0")}
+	con, err := net.ListenUDP("udp", &addr)
+	if err != nil {
+		return "", fmt.Errorf("err starting up udp listener: %s", err)
+	}
+	defer con.Close()
+
+	buffer := make([]byte, 1024)
+
+	byteSize, _, err := con.ReadFromUDP(buffer)
+	if err != nil {
+		return "", fmt.Errorf("err reading from udp: %s", err)
+	}
+
+	message := string(buffer[:byteSize])
+
+	messageSections := strings.Split(message, " ")
+	port := messageSections[len(messageSections)-1]
+
+	return fmt.Sprintf("localhost:%s", port), nil
 }
 
 func (r *Receiver) receiveFile(con net.Conn) error {
