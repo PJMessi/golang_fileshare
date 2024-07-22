@@ -18,10 +18,16 @@ func main() {
 	var purpose string
 	fmt.Scanln(&purpose)
 
+	receiver := receiver.NewReceiver(1024)
+
 	if purpose == "s" {
 		sender.Handle(port)
+
 	} else if purpose == "r" {
-		receiver.Handle()
+		if err := receiver.Handle(); err != nil {
+			log.Fatalf("err receiving file from the sender: %s", err)
+		}
+
 	} else {
 		log.Println("invalid input")
 	}
