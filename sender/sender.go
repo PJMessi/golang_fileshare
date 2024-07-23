@@ -1,6 +1,7 @@
 package sender
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -23,9 +24,12 @@ func NewSender(chunkSize, udpDiscoveryPort uint) *Sender {
 }
 
 func (s *Sender) Handle(port string) error {
+	ctx, ctxCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer ctxCancel()
+
 	// BROADCAST DISCOVERY MSG
 	go func() {
-		if err := s.broadcastDiscoverMsg(port); err != nil {
+		if err := s.broadcastDiscoverMsg(ctx, port); err != nil {
 			log.Printf("err broadcasting discovery msg: %s", err)
 		}
 	}()
@@ -139,7 +143,7 @@ func (s *Sender) requestFilePath() string {
 	return filepath
 }
 
-func (s *Sender) broadcastDiscoverMsg(port string) error {
+func (s *Sender) broadcastDiscoverMsg(ctx context.Context, port string) error {
 	addr, err := net.ResolveUDPAddr("udp", "255.255.255.255:9999")
 	if err != nil {
 		return fmt.Errorf("err resolving udp address: %s", err)
@@ -151,14 +155,18 @@ func (s *Sender) broadcastDiscoverMsg(port string) error {
 	}
 
 	for {
-		message := fmt.Sprintf("DISCOVER_SENDER: %s", port)
-		_, err := con.Write([]byte(message))
-		if err != nil {
-			return fmt.Errorf("err sending discovery msg: %s", err)
+		select {
+		case <-ctx.Done():
+			log.Println("stopped broadcasting")
+			return nil
+		default:
+			message := fmt.Sprintf("DISCOVER_SENDER: %s", port)
+			_, err := con.Write([]byte(message))
+			if err != nil {
+				return fmt.Errorf("err sending discovery msg: %s", err)
+			}
 		}
 
 		time.Sleep(2 * time.Second)
-
-		// TODO: USE TIMEOUT CTX
 	}
 }
