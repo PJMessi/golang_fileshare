@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/pjmessi/go_file_share/receiver"
-	"github.com/pjmessi/go_file_share/sender"
+	"github.com/pjmessi/go_file_share/internal/receiver"
+	"github.com/pjmessi/go_file_share/internal/sender"
 )
 
 func main() {
