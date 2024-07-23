@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -23,24 +24,30 @@ func NewSender(chunkSize, udpDiscoveryPort uint) *Sender {
 	}
 }
 
-func (s *Sender) Handle(port string) error {
+func (s *Sender) Handle(portStr string) error {
 	ctx, ctxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer ctxCancel()
 
+	portInt, err := strconv.Atoi(portStr)
+	if err != nil || portInt < 0 {
+		return fmt.Errorf("invalid port: %s", err)
+	}
+	port := uint(portInt)
+
 	// BROADCAST DISCOVERY MSG
 	go func() {
-		if err := s.broadcastDiscoverMsg(ctx, port); err != nil {
+		if err := s.broadcastDiscoverMsg(ctx, s.udpDiscoveryPort, port); err != nil {
 			log.Printf("err broadcasting discovery msg: %s", err)
 		}
 	}()
 
 	// CREATE A LISTENER
-	listener, err := net.Listen("tcp", ":"+port)
+	listener, err := net.Listen("tcp", ":"+portStr)
 	if err != nil {
 		return fmt.Errorf("err starting listener: %s", err)
 	}
 	defer listener.Close()
-	log.Printf("listening on port: %s", port)
+	log.Printf("listening on port: %s", portStr)
 
 	// LISTEN FOR CLIENTS IN A LOOP
 	for {
@@ -143,8 +150,9 @@ func (s *Sender) requestFilePath() string {
 	return filepath
 }
 
-func (s *Sender) broadcastDiscoverMsg(ctx context.Context, port string) error {
-	addr, err := net.ResolveUDPAddr("udp", "255.255.255.255:9999")
+func (s *Sender) broadcastDiscoverMsg(ctx context.Context, udpDiscoveryPort, port uint) error {
+	udpBroadcastIp := fmt.Sprintf("255.255.255.255:%d", udpDiscoveryPort)
+	addr, err := net.ResolveUDPAddr("udp", udpBroadcastIp)
 	if err != nil {
 		return fmt.Errorf("err resolving udp address: %s", err)
 	}
@@ -160,7 +168,7 @@ func (s *Sender) broadcastDiscoverMsg(ctx context.Context, port string) error {
 			log.Println("stopped broadcasting")
 			return nil
 		default:
-			message := fmt.Sprintf("DISCOVER_SENDER: %s", port)
+			message := fmt.Sprintf("DISCOVER_SENDER: %d", port)
 			_, err := con.Write([]byte(message))
 			if err != nil {
 				return fmt.Errorf("err sending discovery msg: %s", err)
